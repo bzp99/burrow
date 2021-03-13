@@ -4,6 +4,7 @@ package chain
 
 import (
 	"context"
+	"time"
 
 	"github.com/hyperledger/burrow/binary"
 	"github.com/hyperledger/burrow/crypto"
@@ -60,4 +61,16 @@ type Origin struct {
 	Height uint64
 	// The original index in the block
 	Index uint64
+}
+
+// Client-side block consumer configuration. Requests are retried subject to backoff if a non-fatal error is detected
+type BlockConsumerConfig struct {
+	// The base backoff - we wait this amount of time between each batch and we increase the backoff exponentially
+	// until we reach MaxRetries from BaseBackoffDuration
+	BaseBackoffDuration time.Duration
+	// The maximum number of retries before failing
+	MaxRetries          uint64
+	// The default and maximum batch size for block requests, we will reduce it logarithmically to a single block
+	// when backing off
+	MaxBlockBatchSize   uint64
 }

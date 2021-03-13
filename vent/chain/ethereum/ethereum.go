@@ -22,14 +22,13 @@ import (
 	"google.golang.org/grpc/connectivity"
 )
 
-const DefaultMaxBlockBatchSize = 100
-
 type Chain struct {
-	client  EthClient
-	filter  *chain.Filter
-	chainID string
-	version string
-	logger  *logging.Logger
+	client         EthClient
+	filter         *chain.Filter
+	chainID        string
+	version        string
+	consumerConfig *chain.BlockConsumerConfig
+	logger         *logging.Logger
 }
 
 var _ chain.Chain = (*Chain)(nil)
@@ -43,7 +42,8 @@ type EthClient interface {
 }
 
 // We rely on this failing if the chain is not an Ethereum Chain
-func New(client EthClient, filter *chain.Filter, logger *logging.Logger) (*Chain, error) {
+func New(client EthClient, filter *chain.Filter, consumerConfig *chain.BlockConsumerConfig,
+	logger *logging.Logger) (*Chain, error) {
 	chainID, err := client.NetVersion()
 	if err != nil {
 		return nil, fmt.Errorf("could not get Ethereum ChainID: %w", err)
@@ -53,11 +53,12 @@ func New(client EthClient, filter *chain.Filter, logger *logging.Logger) (*Chain
 		return nil, fmt.Errorf("could not get Ethereum node version: %w", err)
 	}
 	return &Chain{
-		client:  client,
-		filter:  filter,
-		chainID: chainID,
-		version: version,
-		logger:  logger,
+		client:         client,
+		filter:         filter,
+		chainID:        chainID,
+		version:        version,
+		consumerConfig: consumerConfig,
+		logger:         logger,
 	}, nil
 }
 
@@ -84,7 +85,7 @@ func (c *Chain) GetChainID() string {
 }
 
 func (c *Chain) ConsumeBlocks(ctx context.Context, in *rpcevents.BlockRange, consumer func(chain.Block) error) error {
-	return Consume(c.client, c.filter, in, 3, c.logger, consumer)
+	return Consume(c.client, c.filter, in, c.consumerConfig, c.logger, consumer)
 }
 
 func (c *Chain) Connectivity() connectivity.State {

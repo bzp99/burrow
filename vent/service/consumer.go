@@ -27,10 +27,11 @@ import (
 
 // Consumer contains basic configuration for consumer to run
 type Consumer struct {
-	Config *config.VentConfig
-	Logger *logging.Logger
-	DB     *sqldb.SQLDB
-	Chain  chain.Chain
+	Config         *config.VentConfig
+	Logger         *logging.Logger
+	DB             *sqldb.SQLDB
+	consumerConfig *chain.BlockConsumerConfig
+	Chain          chain.Chain
 	// external events channel used for when vent is leveraged as a library
 	EventsChannel       chan types.EventData
 	Done                chan struct{}
@@ -286,7 +287,7 @@ func (c *Consumer) connectToChain() (chain.Chain, error) {
 	if burrowErr == nil {
 		return burrowChain, nil
 	}
-	ethChain, ethErr := dialEthereum(c.Config.ChainAddress, filter, c.Logger)
+	ethChain, ethErr := dialEthereum(c.Config.ChainAddress, filter, c.consumerConfig, c.Logger)
 	if ethErr != nil {
 		return nil, fmt.Errorf("could not connect to either Burrow or Ethereum chain, "+
 			"Burrow error: %v, Ethereum error: %v", burrowErr, ethErr)
@@ -302,7 +303,8 @@ func dialBurrow(chainAddress string, filter *chain.Filter) (*burrow.Chain, error
 	return burrow.New(conn, filter)
 }
 
-func dialEthereum(chainAddress string, filter *chain.Filter, logger *logging.Logger) (*ethereum.Chain, error) {
+func dialEthereum(chainAddress string, filter *chain.Filter, consumerConfig *chain.BlockConsumerConfig,
+	logger *logging.Logger) (*ethereum.Chain, error) {
 	client := ethclient.NewEthClient(jsonrpc.NewClient(chainAddress))
-	return ethereum.New(client, filter, logger)
+	return ethereum.New(client, filter, consumerConfig, logger)
 }

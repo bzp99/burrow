@@ -15,11 +15,12 @@ import (
 	"github.com/hyperledger/burrow/vent/chain"
 )
 
-const EthereumConsumerScope = "EthereumConsumer"
+const ConsumerScope = "EthereumConsumer"
 
 const (
-	defaultMaxRetires = 5
-	backoffBase       = 10 * time.Millisecond
+	defaultMaxRetires        = 5
+	defaultBackoffBase       = 250 * time.Millisecond
+	defaultMaxBlockBatchSize = 100
 )
 
 type consumer struct {
@@ -37,18 +38,27 @@ type consumer struct {
 	blockBatchSize    uint64
 }
 
-func Consume(client EthClient, filter *chain.Filter, blockRange *rpcevents.BlockRange, maxBlockBatchSize uint64,
+func Consume(client EthClient, filter *chain.Filter, blockRange *rpcevents.BlockRange, config *chain.BlockConsumerConfig,
 	logger *logging.Logger, consume func(block chain.Block) error) error {
+	if config.MaxBlockBatchSize == 0 {
+		config.MaxBlockBatchSize = defaultMaxBlockBatchSize
+	}
+	if config.BaseBackoffDuration == 0 {
+		config.BaseBackoffDuration = defaultBackoffBase
+	}
+	if config.MaxRetries == 0 {
+		config.MaxRetries = defaultMaxRetires
+	}
 	c := consumer{
 		client:            client,
 		filter:            filter,
 		blockRange:        blockRange,
-		logger:            logger.WithScope(EthereumConsumerScope),
+		logger:            logger.WithScope(ConsumerScope),
 		consumer:          consume,
-		backoffDuration:   backoffBase,
-		maxRetries:        defaultMaxRetires,
-		maxBlockBatchSize: maxBlockBatchSize,
-		blockBatchSize:    maxBlockBatchSize,
+		backoffDuration:   config.BaseBackoffDuration,
+		maxRetries:        config.MaxRetries,
+		maxBlockBatchSize: config.MaxBlockBatchSize,
+		blockBatchSize:    config.MaxBlockBatchSize,
 	}
 	return c.Consume()
 }
@@ -132,10 +142,13 @@ func (c *consumer) handleError(end uint64, err error) error {
 		// If we have a custom server error maybe our batch size is too large or maybe we should wait
 		if rpcError.IsServerError() {
 			c.retries++
+			c.logger.InfoMsg("caught Ethereum server error, backing off...",
+				structure.ErrorKey, err, "retry", c.retries, "backoff", c.backoffDuration.String())
 			if c.retries <= c.maxRetries {
 				// Server may throw if batch too large or request takes too long
 				c.backoff()
-				c.logger.InfoMsg("Ethereum block consumer retrying after Ethereum Server Error", structure.ErrorKey, rpcError)
+				c.logger.InfoMsg("Ethereum block consumer retrying after Ethereum Server Error",
+					structure.ErrorKey, rpcError)
 				return c.ConsumeInBatches(c.nextBlockHeight, end)
 			}
 		}
@@ -162,7 +175,7 @@ func (c *consumer) recover() {
 		c.blockBatchSize += delta
 	}
 	// Reset retries and backoff
-	c.backoffDuration = backoffBase
+	c.backoffDuration = defaultBackoffBase
 	c.retries = 0
 }
 
