@@ -10,6 +10,11 @@ import (
 
 type VMOption string
 
+type EndorserDef struct {
+	Name    string
+	Library string
+}
+
 const (
 	DebugOpcodes VMOption = "DebugOpcodes"
 	DumpTokens   VMOption = "DumpTokens"
@@ -24,7 +29,8 @@ type ExecutionConfig struct {
 	CallStackMaxDepth        uint64
 	DataStackInitialCapacity uint64
 	DataStackMaxDepth        uint64
-	VMOptions                []VMOption `json:",omitempty" toml:",omitempty"`
+	VMOptions                []VMOption    `json:",omitempty" toml:",omitempty"`
+	Endorsers                []EndorserDef `json:",omitempty" toml:",omitempty"`
 }
 
 func DefaultExecutionConfig() *ExecutionConfig {
@@ -41,6 +47,12 @@ type Option func(*executor)
 func VMOptions(vmOptions engine.Options) func(*executor) {
 	return func(exe *executor) {
 		exe.vmOptions = vmOptions
+	}
+}
+
+func Endorsers(endorsers []EndorserDef) func(*executor) {
+	return func(exe *executor) {
+		exe.endorsers = endorsers
 	}
 }
 
@@ -63,5 +75,6 @@ func (ec *ExecutionConfig) ExecutionOptions() ([]Option, error) {
 		}
 	}
 	exeOptions = append(exeOptions, VMOptions(vmOptions))
+	exeOptions = append(exeOptions, Endorsers(ec.Endorsers))
 	return exeOptions, nil
 }

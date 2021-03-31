@@ -147,10 +147,17 @@ build_race:	check build_race_db
 # build burrow and vent
 .PHONY: build_burrow
 build_burrow: commit_hash
-	go build $(BURROW_BUILD_FLAGS) -ldflags "-extldflags '-static' \
-	-X github.com/hyperledger/burrow/project.commit=$(shell cat commit_hash.txt) \
-	-X github.com/hyperledger/burrow/project.date=$(shell date '+%Y-%m-%d')" \
+	go build $(BURROW_BUILD_FLAGS) -ldflags \
+	"-X github.com/hyperledger/burrow/project.commit=$(shell cat commit_hash.txt) \
+	 -X github.com/hyperledger/burrow/project.date=$(shell date '+%Y-%m-%d')" \
 	-o ${REPO}/bin/burrow$(BURROW_BUILD_SUFFIX) ./cmd/burrow
+
+# build plugins
+.PHONY: build_plugins
+build_plugins:
+	for file in $(shell find plug/ -name '*.go'); do \
+		go build -buildmode=plugin -o $$(echo $$file | cut -d. -f1).so $$file; \
+	done
 
 # With the sqlite tag - enabling Vent sqlite adapter support, but building a CGO binary
 .PHONY: build_burrow_sqlite
@@ -167,7 +174,7 @@ build_burrow_debug:
 	$(MAKE) build_burrow
 
 .PHONY: install
-install: build_burrow
+install: build_burrow build_plugins
 	mkdir -p ${BIN_PATH}
 	install ${REPO}/bin/burrow ${BIN_PATH}/burrow
 
