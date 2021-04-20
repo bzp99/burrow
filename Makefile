@@ -155,9 +155,11 @@ build_burrow: commit_hash
 # build plugins
 .PHONY: build_plugins
 build_plugins:
+ifndef NO_PLUGINS
 	for file in $(shell find plug/ -name '*.go'); do \
 		go build -buildmode=plugin -o $$(echo $$file | cut -d. -f1).so $$file; \
 	done
+endif
 
 # With the sqlite tag - enabling Vent sqlite adapter support, but building a CGO binary
 .PHONY: build_burrow_sqlite

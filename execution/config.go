@@ -5,15 +5,11 @@ import (
 
 	"github.com/hyperledger/burrow/execution/engine"
 
+	"github.com/hyperledger/burrow/execution/endorsement"
 	"github.com/hyperledger/burrow/execution/evm"
 )
 
 type VMOption string
-
-type EndorserDef struct {
-	Name    string
-	Library string
-}
 
 const (
 	DebugOpcodes VMOption = "DebugOpcodes"
@@ -29,8 +25,8 @@ type ExecutionConfig struct {
 	CallStackMaxDepth        uint64
 	DataStackInitialCapacity uint64
 	DataStackMaxDepth        uint64
-	VMOptions                []VMOption    `json:",omitempty" toml:",omitempty"`
-	Endorsers                []EndorserDef `json:",omitempty" toml:",omitempty"`
+	VMOptions                []VMOption                   `json:",omitempty" toml:",omitempty"`
+	Endorsers                []endorsement.EndorserPlugin `json:",omitempty" toml:",omitempty"`
 }
 
 func DefaultExecutionConfig() *ExecutionConfig {
@@ -50,8 +46,17 @@ func VMOptions(vmOptions engine.Options) func(*executor) {
 	}
 }
 
-func Endorsers(endorsers []EndorserDef) func(*executor) {
+func Endorsers(plugins []endorsement.EndorserPlugin) func(*executor) {
 	return func(exe *executor) {
+		var endorsers []endorsement.Endorser
+		for _, ep := range plugins {
+			endorser, err := endorsement.LoadEndorser(&ep)
+			if err != nil {
+				return
+				// TODO handle plugin load errors
+			}
+			endorsers = append(endorsers, endorser)
+		}
 		exe.endorsers = endorsers
 	}
 }

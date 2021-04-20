@@ -6,7 +6,6 @@ package execution
 import (
 	"context"
 	"fmt"
-	"plugin"
 	"runtime/debug"
 	"sync"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/hyperledger/burrow/crypto"
 	"github.com/hyperledger/burrow/event"
 	"github.com/hyperledger/burrow/execution/contexts"
+	"github.com/hyperledger/burrow/execution/endorsement"
 	"github.com/hyperledger/burrow/execution/engine"
 	"github.com/hyperledger/burrow/execution/errors"
 	"github.com/hyperledger/burrow/execution/exec"
@@ -34,10 +34,6 @@ import (
 	"github.com/hyperledger/burrow/txs/payload"
 	"github.com/tendermint/tendermint/proto/tendermint/types"
 )
-
-type Endorser interface {
-	Endorse(txEnv *txs.Envelope) (bool, error)
-}
 
 type Executor interface {
 	Execute(txEnv *txs.Envelope) (*exec.TxExecution, error)
@@ -92,7 +88,7 @@ type executor struct {
 	block            *exec.BlockExecution
 	logger           *logging.Logger
 	vmOptions        engine.Options
-	endorsers        []EndorserDef
+	endorsers        []endorsement.Endorser
 	contexts         map[payload.Type]contexts.Context
 }
 
@@ -258,14 +254,11 @@ func (exe *executor) Execute(txEnv *txs.Envelope) (txe *exec.TxExecution, err er
 			}
 		}()
 
-		ok, err := exe.doEndorsements(txEnv)
+		err := exe.checkEndorsements(txEnv)
 		if err != nil {
-			logger.InfoMsg("Error during endorsements; aborting", "error", err)
+			logger.InfoMsg("Transaction rejected due to unsuccessful endorsement", "result", err)
 			txe.PushError(err)
 			return nil, err
-		}
-		if !ok {
-			return nil, fmt.Errorf("Transaction has been rejected by an endorser")
 		}
 
 		err = exe.validateInputsAndStorePublicKeys(txEnv)
@@ -295,40 +288,16 @@ func (exe *executor) Execute(txEnv *txs.Envelope) (txe *exec.TxExecution, err er
 	return nil, fmt.Errorf("unknown transaction type: %v", txEnv.Tx.Type())
 }
 
-func (exe *executor) doEndorsements(txEnv *txs.Envelope) (bool, error) {
-	logger := exe.logger.WithScope("executor.doEndorsements(txEnv txs.Envelope)")
+func (exe *executor) checkEndorsements(txEnv *txs.Envelope) error {
+	logger := exe.logger.WithScope("executor.checkEndorsements(txEnv txs.Envelope)")
 	logger.InfoMsg("Checking endorsements")
 	for _, e := range exe.endorsers {
-		plug, err := plugin.Open(e.Library)
+		err := e.Endorse(txEnv.Tx)
 		if err != nil {
-			logger.InfoMsg("Failed to open endorser plugin", "endorser", e)
-			return false, err
-		}
-
-		symEndorser, err := plug.Lookup("Endorser")
-		if err != nil {
-			logger.InfoMsg("Failed to find endorser code in plugin", "endorser", e)
-			return false, err
-		}
-
-		var endorser Endorser
-		endorser, ok := symEndorser.(Endorser)
-		if !ok {
-			logger.InfoMsg("Unexpected type from symbol in endorser plugin", "endorser", e)
-			return false, err
-		}
-
-		endorsement, err := endorser.Endorse(txEnv)
-		if err != nil {
-			logger.InfoMsg("Error in endorsement code", "endorser", e)
-			return false, err
-		}
-		if !endorsement {
-			logger.InfoMsg("Endorsement failed", "endorserName", e.Name)
-			return false, nil
+			return err
 		}
 	}
-	return true, nil
+	return nil
 }
 
 // Validate inputs, check sequence numbers and capture public keys
